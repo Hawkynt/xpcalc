@@ -1,0 +1,24 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Calculator
+GenericName=Calculator
+Comment=Windows XP style scientific calculator
+Exec=xpcalc
+Icon=xpcalc
+Terminal=false
+Categories=Utility;Calculator;GTK;
+Keywords=calculator;scientific;arithmetic;maths;hex;binary;programmer;
+StartupNotify=true
+StartupWMClass=xpcalc
+Actions=standard;scientific;
+
+[Desktop Action standard]
+Name=Standard Mode
+Exec=xpcalc --standard
+Icon=xpcalc
+
+[Desktop Action scientific]
+Name=Scientific Mode
+Exec=xpcalc --scientific
+Icon=xpcalc
