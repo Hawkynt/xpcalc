@@ -161,6 +161,9 @@ class Engine:
         self._last_op = None        # for repeating on '='
         self._last_operand = None
         self._fresh_op = False      # last thing pressed was a binary operator
+        self._tokens = []           # the running expression, as shown to the user
+        self._operand_repr = None   # e.g. "sqrt(9)" instead of "3"
+        self._pending_operand = False
 
     # ================================================================
     # display
@@ -172,6 +175,20 @@ class Engine:
         if self._typing:
             return self._group(self._entry.text())
         return self._group(self.format(self._acc))
+
+    @property
+    def expression(self):
+        """The task entered so far, e.g. ``2 + sqrt(9) *``.
+
+        Emptied by ``=`` and by ``C``, so it always shows the calculation
+        still in progress.
+        """
+        tokens = list(self._tokens)
+        if self._pending_operand and self._operand_repr is not None:
+            # a function has been applied but not yet consumed by an
+            # operator - show sqrt(9) as soon as the key is pressed
+            tokens.append(self._operand_repr)
+        return self.expression_of(tokens)
 
     @property
     def paren_depth(self):
@@ -265,6 +282,73 @@ class Engine:
             raise CalcError(OVERFLOW)
         return self._check(Decimal(repr(x)))
 
+    def _operand_token(self):
+        if self._operand_repr is not None:
+            return self._operand_repr
+        # the display shows a trailing "0." like XP, the expression line
+        # reads better as plain "0"
+        text = self._group(self.format(self._acc))
+        return text[:-1] if text.endswith(".") else text
+
+    def _needs_operand(self):
+        """True when the expression so far cannot stand without an operand."""
+        return not self._tokens or self._tokens[-1] == "(" or \
+            self._tokens[-1] in PREC
+
+    def _emit_operand(self):
+        # after "=" or "C" the shown result becomes the left operand of
+        # whatever the user types next, so emit it even though nothing
+        # was typed
+        if self._pending_operand or self._needs_operand():
+            self._tokens.append(self._operand_token())
+        self._pending_operand = False
+        self._operand_repr = None
+
+    def _wrap_last_group(self, label):
+        """Turn a trailing ``( ... )`` into ``label( ... )`` for unary keys."""
+        if not self._tokens or self._tokens[-1] != ")":
+            return False
+        depth = 0
+        for index in range(len(self._tokens) - 1, -1, -1):
+            token = self._tokens[index]
+            if token == ")":
+                depth += 1
+            elif token == "(":
+                depth -= 1
+                if depth == 0:
+                    # reuse the group's own brackets: sqrt(2 + 3), not
+                    # sqrt((2 + 3))
+                    group = self.expression_of(self._tokens[index + 1:-1])
+                    del self._tokens[index:]
+                    self._operand_repr = "%s(%s)" % (label, group)
+                    self._pending_operand = True
+                    return True
+        return False
+
+    @staticmethod
+    def expression_of(tokens):
+        out = ""
+        for token in tokens:
+            if not out or token == ")" or out.endswith("("):
+                out += token
+            else:
+                out += " " + token
+        return out
+
+    @staticmethod
+    def _unary_label(name, inv, hyp):
+        if name in ("sin", "cos", "tan"):
+            return ("a" if inv else "") + name + ("h" if hyp else "")
+        return {"ln": "e^" if inv else "ln",
+                "log": "10^" if inv else "log",
+                "x^2": "sqrt" if inv else "sqr",
+                "x^3": "cbrt" if inv else "cube",
+                "1/x": "1/",
+                "n!": "fact",
+                "Int": "frac" if inv else "int",
+                "dms": "deg" if inv else "dms",
+                "Not": "not"}.get(name, name)
+
     def _commit(self):
         """Fold whatever is being typed into the accumulator."""
         if self._typing:
@@ -275,6 +359,8 @@ class Engine:
     def _new_entry(self):
         self._entry = Entry(self.base)
         self._typing = True
+        self._operand_repr = None
+        self._pending_operand = True
 
     def _guard(fn):
         def wrapper(self, *args, **kwargs):
@@ -325,6 +411,8 @@ class Engine:
             self._entry.negate()
         else:
             self._acc = self._check(-self._acc)
+            self._operand_repr = None
+            self._pending_operand = True
 
     @_guard
     def backspace(self):
@@ -421,8 +509,12 @@ class Engine:
             raise CalcError(INVALID_INPUT)
         if self._fresh_op and self._stack:
             self._stack[-1][1] = op          # user changed their mind
+            if self._tokens:
+                self._tokens[-1] = op
             return
         self._commit()
+        self._emit_operand()
+        self._tokens.append(op)
         self._reduce(PREC[op] if self.mode == "scientific" else -1)
         self._stack.append([self._acc, op])
         self._fresh_op = True
@@ -445,6 +537,9 @@ class Engine:
                 break
             self._stack = self._frames.pop()
         self._fresh_op = False
+        self._tokens = []
+        self._operand_repr = None
+        self._pending_operand = False
 
     @_guard
     def open_paren(self):
@@ -453,6 +548,9 @@ class Engine:
         self._frames.append(self._stack)
         self._stack = []
         self._fresh_op = False
+        self._tokens.append("(")
+        self._operand_repr = None
+        self._pending_operand = False
         if not self._typing:
             self._acc = Decimal(0)
 
@@ -461,9 +559,11 @@ class Engine:
         if not self._frames:
             return
         self._commit()
+        self._emit_operand()
         self._reduce(-1)
         self._stack = self._frames.pop()
         self._fresh_op = False
+        self._tokens.append(")")
 
     @_guard
     def percent(self):
@@ -478,7 +578,20 @@ class Engine:
     @_guard
     def unary(self, name, inv=False, hyp=False):
         x = self._commit()
+        label = self._unary_label(name, inv, hyp)
+        if name == "pi":
+            inner = None
+        elif self._pending_operand:
+            inner = self._operand_token()
+        else:
+            inner = None if self._wrap_last_group(label) else self._operand_token()
         self._acc = self._unary(name, x, inv, hyp)
+        if name == "pi":
+            self._operand_repr = "2pi" if inv else "pi"
+            self._pending_operand = True
+        elif inner is not None:
+            self._operand_repr = "%s(%s)" % (label, inner)
+            self._pending_operand = True
         self._fresh_op = False
 
     def _unary(self, name, x, inv, hyp):
@@ -543,11 +656,8 @@ class Engine:
                       "tan": (dmath.tanh, dmath.atanh)}[name][1 if inv else 0]
                 return self._check(fn(x))
             if inv:
-                fn = {"sin": dmath.asin, "cos": dmath.acos, "tan": dmath.atan}[name]
-                return self._check(dmath.from_radians(fn(x), self.angle))
-            r = dmath.radians(x, self.angle)
-            return self._check({"sin": dmath.sin, "cos": dmath.cos,
-                                "tan": dmath.tan}[name](r))
+                return self._check(dmath.inverse_trig(name, x, self.angle))
+            return self._check(dmath.trig(name, x, self.angle))
         except ValueError:
             raise CalcError(INVALID_INPUT)
         except (ZeroDivisionError, DivisionByZero):
@@ -583,6 +693,8 @@ class Engine:
         elif op == "MR":
             self._acc = self._check(self.memory)
             self._typing = False
+            self._operand_repr = None
+            self._pending_operand = True
         elif op == "MS":
             self.memory = value
         elif op == "M+":

@@ -12,7 +12,7 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
-from gi.repository import Gdk, GLib, Gtk  # noqa: E402
+from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
 
 from . import __version__, settings  # noqa: E402
 from .engine import Engine  # noqa: E402
@@ -25,6 +25,11 @@ CSS = b"""
     font-family: monospace;
     font-size: 14pt;
     padding: 2px 6px;
+}
+#expression {
+    font-size: 8pt;
+    min-height: 15px;
+    padding: 0 6px;
 }
 #indicator {
     font-size: 8pt;
@@ -167,6 +172,16 @@ class Calculator(Gtk.Window):
         self.body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.body.set_border_width(5)
         outer.pack_start(self.body, True, True, 0)
+
+        # the running calculation, above the result like a paper tape
+        self.expression = Gtk.Label(label="", xalign=1.0)
+        self.expression.set_name("expression")
+        self.expression.get_style_context().add_class("dim-label")
+        self.expression.set_ellipsize(Pango.EllipsizeMode.START)
+        self.expression.set_max_width_chars(1)   # ellipsize instead of growing
+        self.expression.set_selectable(True)
+        self.expression.set_can_focus(False)
+        self.body.pack_start(self.expression, False, False, 0)
 
         self.display = Gtk.Entry()
         self.display.set_name("display")
@@ -577,6 +592,7 @@ class Calculator(Gtk.Window):
 
     def refresh(self):
         self.display.set_text(self.engine.display)
+        self.expression.set_text(self.engine.expression)
         if self.mem_label is not None:
             self.mem_label.set_text("M" if self.engine.memory_set else "")
         if self.paren_label is not None:

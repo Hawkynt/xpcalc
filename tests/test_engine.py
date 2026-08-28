@@ -296,3 +296,135 @@ class TestInverseOperators(unittest.TestCase):
         run(self.e, "3")
         self.e.unary("log", inv=True)
         self.assertEqual(self.e.display, "1000.")
+
+
+class TestExpression(unittest.TestCase):
+    """The running task shown above the display until '=' is pressed."""
+
+    def setUp(self):
+        self.e = Engine()
+
+    def test_builds_while_typing(self):
+        run(self.e, "12 + 34 *")
+        self.assertEqual(self.e.expression, "12 + 34 *")
+
+    def test_typed_operand_is_not_shown_twice(self):
+        run(self.e, "12 + 34")
+        self.assertEqual(self.e.expression, "12 +")
+
+    def test_cleared_by_equals(self):
+        run(self.e, "2 + 3 =")
+        self.assertEqual(self.e.expression, "")
+
+    def test_cleared_by_clear_all(self):
+        run(self.e, "2 + 3")
+        self.e.clear_all()
+        self.assertEqual(self.e.expression, "")
+
+    def test_survives_clear_entry(self):
+        run(self.e, "2 + 3")
+        self.e.clear_entry()
+        self.assertEqual(self.e.expression, "2 +")
+
+    def test_parens(self):
+        run(self.e, "2 * ( 3 + 4 )")
+        self.assertEqual(self.e.expression, "2 * (3 + 4)")
+
+    def test_nested_parens(self):
+        run(self.e, "2 * ( 3 + ( 4 - 1 ) )")
+        self.assertEqual(self.e.expression, "2 * (3 + (4 - 1))")
+
+    def test_unary_shown_immediately(self):
+        run(self.e, "9")
+        self.e.unary("sqrt")
+        self.assertEqual(self.e.expression, "sqrt(9)")
+
+    def test_unary_nests(self):
+        run(self.e, "9")
+        self.e.unary("sqrt")
+        self.e.unary("x^2")
+        self.assertEqual(self.e.expression, "sqr(sqrt(9))")
+
+    def test_unary_reuses_group_brackets(self):
+        run(self.e, "( 2 + 3 )")
+        self.e.unary("sqrt")
+        self.assertEqual(self.e.expression, "sqrt(2 + 3)")
+
+    def test_inverse_and_hyperbolic_labels(self):
+        run(self.e, "1")
+        self.e.unary("sin", inv=True)
+        self.assertEqual(self.e.expression, "asin(1)")
+        self.e.clear_all()
+        run(self.e, "1")
+        self.e.unary("sin", inv=True, hyp=True)
+        self.assertEqual(self.e.expression, "asinh(1)")
+
+    def test_pi_is_a_constant_not_a_call(self):
+        self.e.unary("pi")
+        self.assertEqual(self.e.expression, "pi")
+
+    def test_operator_replacement_replaces_token(self):
+        run(self.e, "8 + -")
+        self.assertEqual(self.e.expression, "8 -")
+
+    def test_no_trailing_point_on_operands(self):
+        run(self.e, "5 =")
+        run(self.e, "+")
+        self.assertEqual(self.e.expression, "5 +")
+
+    def test_decimals_kept(self):
+        run(self.e, "1 . 5 +")
+        self.assertEqual(self.e.expression, "1.5 +")
+
+    def test_follows_digit_grouping(self):
+        self.e.grouping = True
+        run(self.e, "1234567 +")
+        self.assertEqual(self.e.expression, "1,234,567 +")
+
+    def test_hex_operands(self):
+        self.e.set_base(16)
+        run(self.e, "F F")
+        self.e.operator("And")
+        self.assertEqual(self.e.expression, "FF And")
+
+    def test_memory_recall_is_a_plain_operand(self):
+        run(self.e, "7")
+        self.e.memory_op("MS")
+        self.e.clear_all()
+        self.e.memory_op("MR")
+        self.e.operator("+")
+        self.assertEqual(self.e.expression, "7 +")
+
+    def test_standard_mode_too(self):
+        self.e.set_mode("standard")
+        run(self.e, "2 + 3 *")
+        self.assertEqual(self.e.expression, "2 + 3 *")
+
+
+class TestAnglePrecision(unittest.TestCase):
+    """Angle conversion must not cost digits (asin(1) is exactly 90 degrees)."""
+
+    def test_asin_one_is_ninety(self):
+        e = Engine()
+        run(e, "1")
+        e.unary("sin", inv=True)
+        self.assertEqual(e.display, "90.")
+
+    def test_acos_zero_is_ninety(self):
+        e = Engine()
+        run(e, "0")
+        e.unary("cos", inv=True)
+        self.assertEqual(e.display, "90.")
+
+    def test_atan_one_is_fortyfive(self):
+        e = Engine()
+        run(e, "1")
+        e.unary("tan", inv=True)
+        self.assertEqual(e.display, "45.")
+
+    def test_asin_one_in_grads(self):
+        e = Engine()
+        e.set_angle("grad")
+        run(e, "1")
+        e.unary("sin", inv=True)
+        self.assertEqual(e.display, "100.")

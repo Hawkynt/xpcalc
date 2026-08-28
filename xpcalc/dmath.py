@@ -199,6 +199,27 @@ def power(a, b):
     return +total
 
 
+def trig(name, x, angle):
+    """sin/cos/tan of an angle, converted and evaluated in one context.
+
+    Rounding the radian value to display precision first would cost the last
+    couple of digits, so the conversion and the series share guard digits.
+    """
+    with localcontext() as ctx:
+        ctx.prec += GUARD
+        total = {"sin": sin, "cos": cos, "tan": tan}[name](radians(x, angle))
+    return +total
+
+
+def inverse_trig(name, x, angle):
+    """asin/acos/atan, returned in the current angle unit."""
+    with localcontext() as ctx:
+        ctx.prec += GUARD
+        radian = {"sin": asin, "cos": acos, "tan": atan}[name](x)
+        total = from_radians(radian, angle)
+    return +total
+
+
 def root(a, b):
     """The b-th root of a, kept accurate to the full display precision.
 

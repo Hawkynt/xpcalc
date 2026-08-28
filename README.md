@@ -6,6 +6,10 @@ theme without any extra styling.
 
 ![Scientific mode](docs/scientific.png)
 
+The line above the display keeps the whole task visible — operands, operators,
+brackets and functions — until you press `=` or Enter, which clears it and
+leaves the result.
+
 ## Requirements
 
 * Python 3.8+
@@ -77,12 +81,32 @@ KDE, Xfce, Cinnamon, MATE and LXQt:
 | Bitwise | `Mod` `And` `Or` `Xor` `Lsh` (`Inv` → right shift) `Not` `Int` |
 | Statistics | `Sta` opens the data box, then `Dat` `Ave` `Sum` `s` |
 | Display | `Exp` for exponent entry, `F-E` for scientific notation, `dms` |
+| Expression | the running task, e.g. `12 + (34 * 2) / sqrt(9)`, above the result |
 | Grouping | parentheses up to 25 deep, with full operator precedence |
 
 `Inv` unticks itself after one use, as it does in XP. Number bases grey out the
 digits and functions they cannot use, and `Not` uses two's complement at the
 selected word size — `Not 1` in Dword hex is `FFFFFFFE`, which reads `-2` in
 Dec.
+
+### Expression line
+
+The task you have entered stays on the small line above the display until `=`
+or Enter, then clears:
+
+| Pressed | Expression line | Display |
+| --- | --- | --- |
+| `12 + 34 *` | `12 + 34 *` | `34.` |
+| `2 * ( 3 + 4 )` | `2 * (3 + 4)` | `7.` |
+| `9` `sqrt` | `sqrt(9)` | `3.` |
+| `( 2 + 3 )` `sqrt` | `sqrt(2 + 3)` | `2.2360679...` |
+| `1` `Inv` `sin` | `asin(1)` | `90.` |
+| `2 + 3 =` | *(empty)* | `5.` |
+| then `*` | `5 *` | `5.` |
+
+Functions show as soon as you press them, so a square root never disappears
+into its result. Pressing `=` on a result and carrying on with an operator
+continues from that result. `CE` leaves the expression alone; `C` clears it.
 
 ### Precision
 
