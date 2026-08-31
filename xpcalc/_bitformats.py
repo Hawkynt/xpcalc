@@ -69,48 +69,55 @@ def _bcd(bits, width):
 
 
 def _rgb565(value):
-    r = (value >> 11) & 0x1F
-    g = (value >> 5) & 0x3F
-    b = value & 0x1F
-    return "#{:02X}{:02X}{:02X}".format(round(r * 255 / 31),
-                                        round(g * 255 / 63),
-                                        round(b * 255 / 31))
+    r = ((value >> 11) & 0x1F) * 255 // 31
+    g = ((value >> 5) & 0x3F) * 255 // 63
+    b = (value & 0x1F) * 255 // 31
+    return "rgb({},{},{})".format(r, g, b)
 
 
 def _rgb555(value):
-    r = (value >> 10) & 0x1F
-    g = (value >> 5) & 0x1F
-    b = value & 0x1F
-    return "#{:02X}{:02X}{:02X}".format(round(r * 255 / 31),
-                                        round(g * 255 / 31),
-                                        round(b * 255 / 31))
+    r = ((value >> 10) & 0x1F) * 255 // 31
+    g = ((value >> 5) & 0x1F) * 255 // 31
+    b = (value & 0x1F) * 255 // 31
+    return "rgb({},{},{})".format(r, g, b)
 
 
 def _argb1555(value):
-    return "A={} {}".format((value >> 15) & 1, _rgb555(value))
+    a = 1 if (value >> 15) & 1 else 0
+    r = ((value >> 10) & 0x1F) * 255 // 31
+    g = ((value >> 5) & 0x1F) * 255 // 31
+    b = (value & 0x1F) * 255 // 31
+    return "rgba({},{},{},{})".format(r, g, b, a)
 
 
 def _argb4444(value):
-    a = ((value >> 12) & 0xF) * 17
+    a = ((value >> 12) & 0xF) / 15
     r = ((value >> 8) & 0xF) * 17
     g = ((value >> 4) & 0xF) * 17
     b = (value & 0xF) * 17
-    return "#{:02X}{:02X}{:02X}{:02X}".format(r, g, b, a)
+    return "rgba({},{},{},{:.2f})".format(r, g, b, a)
 
 
 def _rgb(value):
-    return "#{:06X}".format(value & 0xFFFFFF)
+    r = (value >> 16) & 0xFF
+    g = (value >> 8) & 0xFF
+    b = value & 0xFF
+    return "rgb({},{},{})".format(r, g, b)
 
 
 def _rgba(value):
-    return "#{:08X}".format(value & 0xFFFFFFFF)
+    a = (value >> 24) & 0xFF
+    r = (value >> 16) & 0xFF
+    g = (value >> 8) & 0xFF
+    b = value & 0xFF
+    return "rgba({},{},{},{:.2f})".format(r, g, b, a / 255)
 
 
 def _bgr(value):
     b = (value >> 16) & 0xFF
     g = (value >> 8) & 0xFF
     r = value & 0xFF
-    return "#{:02X}{:02X}{:02X}".format(r, g, b)
+    return "rgb({},{},{})".format(r, g, b)
 
 
 def _bgra(value):
@@ -118,35 +125,32 @@ def _bgra(value):
     b = (value >> 16) & 0xFF
     g = (value >> 8) & 0xFF
     r = value & 0xFF
-    return "#{:02X}{:02X}{:02X}{:02X}".format(r, g, b, a)
+    return "rgba({},{},{},{:.2f})".format(r, g, b, a / 255)
 
 
 def _abgr(value):
-    r = (value >> 24) & 0xFF
-    g = (value >> 16) & 0xFF
-    b = (value >> 8) & 0xFF
-    a = value & 0xFF
-    return "#{:02X}{:02X}{:02X}{:02X}".format(r, g, b, a)
+    # BitBench currently gives ABGR the same packed field layout as BGRA.
+    return _bgra(value)
 
 
 def _hsv(value):
-    r = ((value >> 16) & 0xFF) / 255.0
-    g = ((value >> 8) & 0xFF) / 255.0
-    b = (value & 0xFF) / 255.0
-    maximum = max(r, g, b)
-    minimum = min(r, g, b)
-    delta = maximum - minimum
-    if delta == 0:
-        hue = 0
-    elif maximum == r:
-        hue = (60 * ((g - b) / delta) + 360) % 360
-    elif maximum == g:
-        hue = 60 * ((b - r) / delta + 2)
-    else:
-        hue = 60 * ((r - g) / delta + 4)
-    saturation = 0 if maximum == 0 else delta / maximum
-    return "H={} S={}% V={}%".format(
-        round(hue), round(saturation * 100), round(maximum * 100))
+    h = ((value >> 16) & 0xFF) * 360 // 255
+    s = ((value >> 8) & 0xFF) * 100 // 255
+    v = (value & 0xFF) * 100 // 255
+    hf = h / 360
+    sf = s / 100
+    vf = v / 100
+    i = int(hf * 6)
+    f = hf * 6 - i
+    p = vf * (1 - sf)
+    q = vf * (1 - f * sf)
+    tt = vf * (1 - (1 - f) * sf)
+    choices = (
+        (vf, tt, p), (q, vf, p), (p, vf, tt),
+        (p, q, vf), (tt, p, vf), (vf, p, q),
+    )
+    r, g, b = choices[i % 6]
+    return "rgb({},{},{})".format(round(r * 255), round(g * 255), round(b * 255))
 
 
 def _safe_datetime(epoch, **delta):
@@ -184,7 +188,8 @@ def _gps(value):
 
 
 def _dotnet_ticks(value):
-    return _safe_datetime(_EPOCH_DOTNET, microseconds=value // 10)
+    ticks = value & 0x3FFFFFFFFFFFFFFF
+    return _safe_datetime(_EPOCH_DOTNET, microseconds=ticks // 10)
 
 
 def _webkit(value):
